@@ -68,7 +68,7 @@ bool Analyzer4K::check_bank_offset(void *base) {
 }
 
 void *Analyzer4K::bank_offset(void *huge_ptr) {
-  for (int i = 0; i < 1024; ++i) {
+  for (int i = 0; i < (128UL << num_ranks); ++i) {
     // 128 because 1 ranked modules allow us to detect pages of order at most 7
     for (uint64_t j = 0; j < (128UL << num_ranks); ++j) {
       if (check_bank_offset((void *)((char *)huge_ptr + j * 0x1000UL)))

@@ -4,50 +4,105 @@
 #include "Memory/Analyzer4K.hpp"
 #include <iostream>
 
+#define RESERVE_SIZE GB(1)
+#define ANALYZER_SWEEP MB(4)
+#define STEP_SIZE MB(128)
+#define ALLOC_ATTEMPTS 10
+#define VERIFY_ROUNDS 16
+
 /// Allocates a MEM_SIZE bytes of memory by using super or huge pages.
 void Memory::allocate_memory(size_t mem_size) {
   this->size = mem_size;
-  volatile char *target = nullptr;
+  volatile char *target = static_cast<char *>(MAP_FAILED);
   FILE *fp;
 
   if (use_page) {
-
-    bool failed = true;
-
     Analyzer4K analyzer4k(num_ranks);
 
-    for (int i = 0; i < 4; ++i) {
+    Logger::log_info("Using 4K pages for memory allocation.");
+    for (int attempt = 0; attempt < ALLOC_ATTEMPTS; ++attempt) {
+      size_t drain_size = 0x1000UL * sysconf(_SC_AVPHYS_PAGES) - RESERVE_SIZE;
+      Logger::log_info(format_string("Draining %zx bytes.", drain_size));
+      void *drain = mmap(NULL, drain_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
 
-      size_t alloc_size = sysconf(_SC_AVPHYS_PAGES) * 4096 - 0x100000000UL;
-      mfence();
-      volatile char *mapped_target = (volatile char *)mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-      mfence();
-      munmap((void *)mapped_target, alloc_size - 528 * MB(2));
-      sleep(1);
-      void *offset = analyzer4k.bank_offset((void *)(mapped_target + alloc_size - 528*MB(2)));
-      sleep(1);
-      void *offset2 = analyzer4k.bank_offset((void *)(mapped_target + alloc_size - 16*MB(2)));
-      sleep(1);
-      std::cout << "4: " << offset << " " << offset2 << std::endl;
+      char *contiguous = static_cast<char *>(MAP_FAILED);
+      for (char *probe = static_cast<char *>(drain); probe < static_cast<char *>(drain) + drain_size; probe += STEP_SIZE) {
+        Logger::log_info(format_string("Checking probe %p.", probe));
+        size_t offset = reinterpret_cast<size_t>(analyzer4k.bank_offset(probe));
+        Logger::log_info(format_string("Offset: %zx.", offset));
+        if (!offset) {
+          continue;
+        }
 
-      if ((uint64_t)offset == (uint64_t)offset2 && (uint64_t)offset != 0) {
-        target = (volatile char *)mremap((void *)(mapped_target + alloc_size - 528*MB(2) + (uint64_t)offset), MEM_SIZE, MEM_SIZE, MREMAP_MAYMOVE | MREMAP_FIXED, start_address);
+        char *candidate = probe + offset;
+        int successful_checks = 0;
+        for (int round = 0; round < VERIFY_ROUNDS; ++round) {
+          char *test_addr = candidate + round * ANALYZER_SWEEP;
+          if (test_addr >= static_cast<char *>(drain) + drain_size) {
+            break;
+          }
+          successful_checks += analyzer4k.check_bank_offset(test_addr);
+        }
+        Logger::log_info(format_string("Successful checks: %d.", successful_checks));
+
+        if (successful_checks > VERIFY_ROUNDS / 2) {
+          contiguous = candidate;
+          break;
+        }
+      }
+      if (contiguous == MAP_FAILED) {
+        Logger::log_info(format_string("No contiguous memory found in attempt %d.", attempt));
+        Logger::flush();
+        munmap(drain, drain_size);
         sleep(1);
-        munmap((void *)mapped_target, alloc_size);
-        sleep(1);
-        madvise((void *)target, MEM_SIZE, MADV_DONTFORK);
-        std::cout << "OFFSET: " << getpid() << " " << (void *)mapped_target << " " << std::hex << (uint64_t)offset << " " << (void *)(mapped_target + 384UL*MB(2) + (uint64_t)offset) << std::dec << std::endl;
-        failed = false;
-        break;
-      } else {
-        munmap((void *)mapped_target, alloc_size);
-        sleep(5);
+        continue;
       }
 
+      char *contiguous_start = contiguous;
+      for (;contiguous_start >= static_cast<char *>(drain); contiguous_start -= ANALYZER_SWEEP){
+        if (!analyzer4k.check_bank_offset(contiguous_start)) {
+          if (!analyzer4k.check_bank_offset(contiguous_start)) {
+            if (!analyzer4k.check_bank_offset(contiguous_start)) {
+              break;
+            }
+          }
+        }
+      }
+      char *contiguous_end = contiguous;
+      for (; contiguous_end < static_cast<char *>(drain) + drain_size; contiguous_end += ANALYZER_SWEEP){
+        if (!analyzer4k.check_bank_offset(contiguous_end)) {
+          if (!analyzer4k.check_bank_offset(contiguous_end)) {
+            if (!analyzer4k.check_bank_offset(contiguous_end)) {
+              break;
+            }
+          }
+        }
+      }
+      Logger::log_info(format_string("Contiguous memory found from %p to %p.", contiguous_start, contiguous_end));
+
+      size_t contiguous_size = contiguous_end - contiguous_start;
+      if (contiguous_size < MEM_SIZE) {
+        Logger::log_error(format_string("Contiguous memory size %zx is smaller than requested size %zx.", contiguous_size, MEM_SIZE));
+        Logger::flush();
+        munmap(drain, drain_size);
+        sleep(1);
+        continue;
+      }
+
+      target = static_cast<volatile char *>(mremap(contiguous_end - MEM_SIZE, MEM_SIZE, MEM_SIZE, MREMAP_MAYMOVE | MREMAP_FIXED, start_address));
+      munmap(drain, drain_size);
+      Logger::log_info(format_string("Obtained contiguous memory at %p.", target));
+      Logger::flush();
+      break;
+    }
+    if (target == MAP_FAILED) {
+      Logger::log_error("Could not allocate contiguous memory due to high fragmentation.");
+      Logger::flush();
+      exit(EXIT_FAILURE);
     }
 
-    if (failed) exit(EXIT_FAILURE);
     Logger::log_info(format_string("Timestamp (Allocated memory with 4K):  %lu.", realtime_now()));
+    Logger::flush();
 
   } else if (use_hugepage) {
     // allocate memory using huge pages

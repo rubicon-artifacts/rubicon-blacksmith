@@ -4,6 +4,10 @@ This repository contains an enhanced version of the [Blacksmith Rowhammer fuzzer
 ## Getting Started
 To set up Rubicon-Enhanced Blacksmith, refer to the installation and setup instructions provided in the "Getting Started" section of the original Blacksmith project below.
 
+**Important Note on Memory Fragmentation**
+
+Compiling Blacksmith (especially repeatedly) causes significant memory fragmentation, the root cause of which remains unknown. In earlier versions, this issue resulted in segmentation faults during memory allocation. The latest release addresses this problem by introducing additional checks. While memory allocation is now handled more gracefully, in rare cases, memory fragmentation may still interfere with the experiment. If you repeatedly see warnings about allocation failures or experience consistent experiment failures, a system reboot will usually resolve the issue.
+
 ## Additional Parameters
 Rubicon introduces several new runtime parameters to control memory granularity and enable the Rubicon-powered end-to-end attack:
 
