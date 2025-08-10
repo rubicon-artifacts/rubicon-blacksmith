@@ -205,6 +205,7 @@ void ReplayingHammerer::replay_patterns(
         success = (num_bitflips > 0);
         Logger::log_data(format_string("%ld\t%ld\t%lu", rounds_with_bitflips,
                                        cur_try, num_bitflips));
+        Logger::flush();
 
         if (success || cur_try == MAX_RETRIES) {
           int64_t elapsed_time_us = get_timestamp_us() - time_start_us;
@@ -928,12 +929,12 @@ struct SweepSummary ReplayingHammerer::sweep_pattern(
     stringstream << std::setfill(' ') << std::left;
   };
   std::stringstream ss;
-  init_ss(ss);
-  ss << std::setw(10) << "Offset" << std::setw(12) << "Min. Row"
-     << std::setw(12) << "Max. Row" << std::setw(13) << "#Bit Flips"
-     << "Flipped Rows" << std::endl
-     << "--------------------------------------------------------------";
-  Logger::log_data(ss.str());
+  // init_ss(ss);
+  // ss << std::setw(10) << "Offset" << std::setw(12) << "Min. Row"
+  //    << std::setw(12) << "Max. Row" << std::setw(13) << "#Bit Flips"
+  //    << "Flipped Rows" << std::endl
+  //    << "--------------------------------------------------------------";
+  // Logger::log_data(ss.str());
 
   size_t total_bit_flips_sweeping = 0;
   std::vector<BitFlip> bflips;
@@ -969,11 +970,11 @@ struct SweepSummary ReplayingHammerer::sweep_pattern(
     // << (uint64_t)bf.bitmask << " " << (uint64_t)bf.corrupted_data <<
     // std::endl;
 
-    init_ss(ss);
-    ss << std::setw(10) << offset << std::setw(12) << mapper.min_row
-       << std::setw(12) << mapper.max_row << std::setw(13) << num_flips
-       << mem.get_flipped_rows_text_repr();
-    Logger::log_data(ss.str());
+    // init_ss(ss);
+    // ss << std::setw(10) << offset << std::setw(12) << mapper.min_row
+    //    << std::setw(12) << mapper.max_row << std::setw(13) << num_flips
+    //    << mem.get_flipped_rows_text_repr();
+    // Logger::log_data(ss.str());
   }
 
   Logger::log_info("Summary of sweeping pattern:");

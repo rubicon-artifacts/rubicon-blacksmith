@@ -21,12 +21,9 @@ int main(int argc, char **argv) {
   // interruptions
   if (program_args.set_priority) {
     int ret = setpriority(PRIO_PROCESS, 0, -20);
-    if (ret != 0)
-      Logger::log_error("Instruction setpriority failed.");
+    // if (ret != 0)
+      // Logger::log_error("Instruction setpriority failed.");
   }
-
-  Logger::log_info(
-      format_string("Timestamp (Started Attack):  %lu.", realtime_now()));
 
   // allocate a large bulk of contiguous memory
   Memory memory(program_args.use_hugepage, program_args.use_page,

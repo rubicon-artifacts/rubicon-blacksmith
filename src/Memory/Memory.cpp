@@ -101,7 +101,9 @@ void Memory::allocate_memory(size_t mem_size) {
       exit(EXIT_FAILURE);
     }
 
-    Logger::log_info(format_string("Timestamp (Allocated memory with 4K):  %lu.", realtime_now()));
+    Logger::log_info("Allocated memory (4K pages)");
+    Logger::log_timestamp();
+
     Logger::flush();
 
   } else if (use_hugepage) {
@@ -112,7 +114,6 @@ void Memory::allocate_memory(size_t mem_size) {
     // for khugepaged
     Logger::log_info("Waiting for khugepaged.");
     sleep(1);
-    assert(madvise(mmap(NULL, 4096*128, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0), 0x80000000, MADV_DONTFORK) == 0);
     Logger::log_info(format_string("Timestamp (Allocated memory with THPs):  %lu.", realtime_now()));
   } else {
     // allocate memory using super pages
